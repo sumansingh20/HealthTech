@@ -1,0 +1,34 @@
+{
+  "name": "ai-icu-monitoring-system",
+  "private": true,
+  "version": "1.0.0",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "corepack pnpm --filter @icu/shared build && corepack pnpm -r --parallel dev",
+    "build": "corepack pnpm -r build",
+    "lint": "corepack pnpm -r lint",
+    "test": "vitest run",
+    "typecheck": "corepack pnpm -r typecheck",
+    "dev:web": "corepack pnpm --filter web dev",
+    "dev:api-gateway": "corepack pnpm --filter api-gateway dev",
+    "dev:auth": "corepack pnpm --filter auth-service dev",
+    "dev:patient": "corepack pnpm --filter patient-service dev",
+    "dev:vitals": "corepack pnpm --filter vitals-service dev",
+    "dev:ml": "corepack pnpm --filter ml-service dev",
+    "dev:iot": "corepack pnpm --filter iot-simulator dev",
+    "dev:notifications": "corepack pnpm --filter notification-service dev",
+    "dev:analytics": "corepack pnpm --filter analytics-service dev",
+    "dev:audit": "corepack pnpm --filter audit-service dev"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ]
+}

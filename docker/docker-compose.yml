@@ -1,0 +1,334 @@
+version: '3.9'
+
+# ============================================
+# AI-Based Remote ICU Patient Monitoring System
+# Docker Compose Configuration
+# ============================================
+# Usage:
+#   docker compose up -d              # Start all services
+#   docker compose logs -f             # View logs
+#   docker compose down             # Stop all services
+#   docker compose up --build      # Rebuild and start
+#
+# MongoDB Atlas Configuration:
+#   MONGODB_URI: mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu
+#   Set environment variable to override:
+#   export MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/icu"
+#
+# Vercel Frontend Deployment:
+#   Frontend deploys to Vercel automatically from GitHub
+#   Backend services run in Docker locally or in cloud
+# ============================================
+
+services:
+  # Redis for pub/sub and caching
+  redis:
+    image: redis:7-alpine
+    container_name: icu-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - icu-network
+
+  # MongoDB Atlas is configured via MONGODB_URI environment variable
+  # Connection: mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu
+  # To override: export MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/icu"
+  # Note: Local MongoDB container disabled - using Atlas cloud database
+  # For local dev without Atlas, uncomment the mongo service below:
+  # mongo:
+  #   image: mongo:7
+  #   container_name: icu-mongo
+  #   ports:
+  #     - "27017:27017"
+  #   environment:
+  #     MONGO_INITDB_DATABASE: icu
+  #   networks:
+  #     - icu-network
+  #   profiles:
+  #     - local
+
+  # API Gateway (Edge service)
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+      args:
+        SERVICE: api-gateway
+    container_name: icu-api-gateway
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      AUTH_SERVICE_URL: http://auth:4001
+      PATIENT_SERVICE_URL: http://patient:4002
+      VITALS_SERVICE_URL: http://vitals:4003
+      NOTIFICATION_SERVICE_URL: http://notifications:4006
+      ANALYTICS_SERVICE_URL: http://analytics:4007
+      AUDIT_SERVICE_URL: http://audit:4008
+    depends_on:
+      auth:
+        condition: service_healthy
+      patient:
+        condition: service_healthy
+      vitals:
+        condition: service_healthy
+      notifications:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+      audit:
+        condition: service_healthy
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # Authentication Service (JWT + RBAC)
+  auth:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+      args:
+        SERVICE: auth-service
+    container_name: icu-auth
+    ports:
+      - "4001:4001"
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-development-refresh-secret}
+      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # Patient Service (CRUD + Aggregation)
+  patient:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+      args:
+        SERVICE: patient-service
+    container_name: icu-patient
+    ports:
+      - "4002:4002"
+    environment:
+      NODE_ENV: production
+      PORT: 4002
+      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # Vitals Service (WebSocket + Streaming)
+  vitals:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+      args:
+        SERVICE: vitals-service
+    container_name: icu-vitals
+    ports:
+      - "4003:4003"
+    environment:
+      NODE_ENV: production
+      PORT: 4003
+      REDIS_URL: redis://redis:6379
+      NOTIFICATION_SERVICE_URL: http://notifications:4006
+      STREAM_INTERVAL_MS: 1600
+    depends_on:
+      redis:
+        condition: service_healthy
+      notifications:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # ML Service (FastAPI + ML Models)
+  ml:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ml
+    container_name: icu-ml
+    ports:
+      - "4004:4004"
+    environment:
+      PYTHONUNBUFFERED: 1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # IoT Simulator (Multi-patient vitals generator)
+  iot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+      args:
+        SERVICE: iot-simulator
+    container_name: icu-iot
+    ports:
+      - "4005:4005"
+    environment:
+      NODE_ENV: production
+      PORT: 4005
+      VITALS_SERVICE_URL: http://vitals:4003
+      IOT_INTERVAL_MS: ${IOT_INTERVAL_MS:-1800}
+      IOT_AUTOSTART: ${IOT_AUTOSTART:-true}
+    depends_on:
+      vitals:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # Notification Service (Alert queues + Email/SMS)
+  notifications:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+      args:
+        SERVICE: notification-service
+    container_name: icu-notifications
+    ports:
+      - "4006:4006"
+    environment:
+      NODE_ENV: production
+      PORT: 4006
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # Analytics Service (Trends + PDF reports)
+  analytics:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+      args:
+        SERVICE: analytics-service
+    container_name: icu-analytics
+    ports:
+      - "4007:4007"
+    environment:
+      NODE_ENV: production
+      PORT: 4007
+      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # Audit Service (Compliance logging)
+  audit:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+      args:
+        SERVICE: audit-service
+    container_name: icu-audit
+    ports:
+      - "4008:4008"
+    environment:
+      NODE_ENV: production
+      PORT: 4008
+      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+  # Next.js Web Application
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    container_name: icu-web
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://api-gateway:4000
+      NEXT_PUBLIC_WS_URL: ws://vitals:4003/ws
+    depends_on:
+      api-gateway:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - icu-network
+    restart: unless-stopped
+
+# Volume definitions for data persistence
+volumes:
+  redis-data:
+    driver: local
+
+# Network definition for inter-service communication
+networks:
+  icu-network:
+    driver: bridge

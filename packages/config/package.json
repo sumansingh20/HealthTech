@@ -1,0 +1,17 @@
+{
+  "name": "@icu/config",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "scripts": {
+    "build": "echo 'config package has no build step'",
+    "lint": "echo 'config package lint not configured'",
+    "test": "echo 'config package tests handled at workspace level'",
+    "typecheck": "echo 'config package typecheck handled at workspace level'"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.1"
+  }
+}
