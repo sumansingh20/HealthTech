@@ -1,3 +1,4 @@
+
 'use client';
 
 import { create } from 'zustand';
@@ -98,14 +99,16 @@ export const useIcuStore = create<IcuState>((set) => ({
 }));
 
 export function connectVitalsSocket() {
-  const url = process.env.NEXT_PUBLIC_WS_URL;
-  if (!url) {
-    useIcuStore.getState().setConnected(false);
-    return {
-      close() {
-        useIcuStore.getState().setConnected(false);
-      }
-    } as Pick<WebSocket, 'close'>;
+  let url = process.env.NEXT_PUBLIC_WS_URL;
+  // Fallback for local development
+  if (!url || url.length === 0) {
+    url = 'ws://localhost:4003/ws';
+  }
+  try {
+    new URL(url);
+  } catch {
+    // If URL parsing fails, try with ws:// protocol prefix
+    url = `ws://${url}`;
   }
   const socket = new WebSocket(url);
   const store = useIcuStore.getState();
