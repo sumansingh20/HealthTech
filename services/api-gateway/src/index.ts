@@ -1,11 +1,6 @@
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import {
-  demoAlerts,
-  demoPatients,
-  demoPredictions,
-  demoVitals,
   healthResponse,
-  makeTrend,
   sendJson,
   serviceUrl
 } from '@icu/shared';
@@ -57,25 +52,9 @@ async function proxy(req: IncomingMessage, res: ServerResponse, targetBase: stri
 function dashboardFallback() {
   return {
     generatedAt: new Date().toISOString(),
-    patients: demoPatients.map((patient) => {
-      const latestVitals = demoVitals.find((reading) => reading.patientId === patient.id);
-      const latestPrediction = demoPredictions.find((prediction) => prediction.patientId === patient.id);
-      return {
-        ...patient,
-        latestVitals,
-        latestPrediction,
-        activeAlerts: demoAlerts.filter((alert) => alert.patientId === patient.id),
-        timeline: [],
-        trend: latestVitals ? makeTrend(latestVitals) : []
-      };
-    }),
-    capacity: {
-      beds: 12,
-      occupied: demoPatients.length,
-      critical: demoPatients.filter((patient) => patient.status === 'critical').length,
-      warning: demoPatients.filter((patient) => patient.status === 'watching').length
-    },
-    alerts: demoAlerts
+    patients: [],
+    capacity: { beds: 12, occupied: 0, critical: 0, warning: 0 },
+    alerts: []
   };
 }
 
@@ -105,11 +84,7 @@ const server = createHttpServer(async (req, res) => {
     }
 
     if (pathname === '/api/vitals/latest') {
-      const response = await fetch(`${services.vitals}/vitals/latest`).then((item) => item.json()).catch(() => ({
-        readings: demoVitals,
-        predictions: demoPredictions,
-        alerts: demoAlerts
-      }));
+      const response = await fetch(`${services.vitals}/vitals/latest`).then((item) => item.json()).catch(() => ({ readings: [], predictions: [], alerts: [] }));
       sendJson(res, 200, response);
       return;
     }

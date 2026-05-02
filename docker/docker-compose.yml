@@ -11,9 +11,9 @@ version: '3.9'
 #   docker compose up --build      # Rebuild and start
 #
 # MongoDB Atlas Configuration:
-#   MONGODB_URI: mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu
+#   MONGODB_URI: mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/
 #   Set environment variable to override:
-#   export MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/icu"
+#   export MONGODB_URI="mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/"
 #
 # Vercel Frontend Deployment:
 #   Frontend deploys to Vercel automatically from GitHub
@@ -38,8 +38,8 @@ services:
       - icu-network
 
   # MongoDB Atlas is configured via MONGODB_URI environment variable
-  # Connection: mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu
-  # To override: export MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/icu"
+  # Connection: mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/
+  # To override: export MONGODB_URI="mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/"
   # Note: Local MongoDB container disabled - using Atlas cloud database
   # For local dev without Atlas, uncomment the mongo service below:
   # mongo:
@@ -105,7 +105,7 @@ services:
       PORT: 4001
       JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-development-refresh-secret}
-      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu}
+      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/}
       REDIS_URL: redis://redis:6379
     depends_on:
       redis:
@@ -132,7 +132,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4002
-      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu}
+      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/}
       REDIS_URL: redis://redis:6379
     depends_on:
       redis:
@@ -262,7 +262,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4007
-      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu}
+      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/}
       REDIS_URL: redis://redis:6379
     depends_on:
       redis:
@@ -289,7 +289,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4008
-      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu}
+      MONGODB_URI: ${MONGODB_URI:-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/}
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4008/health"]
       interval: 30s

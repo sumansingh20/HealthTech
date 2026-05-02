@@ -13,10 +13,10 @@
 ### MongoDB Atlas Configuration:
 - **Connection String**: `mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/`
 - **Database Name**: icu
-- Already configured in docker-compose.yml via MONGODB_URI environment variable
+- Already configured in docker-compose.yml via MONGODB_ATLAS_URI / MONGODB_URI environment variables
 
 ### Current Services Status:
-1. ✅ Auth Service - JWT with RBAC (demo users in-memory)
+1. ✅ Auth Service - JWT with RBAC
 2. ✅ Patient Service - CRUD + aggregation
 3. ✅ Vitals Service - WebSocket + real-time streaming
 4. ✅ IoT Engine - Multi-patient vital simulation
@@ -30,7 +30,7 @@
 ## Plan: Implementation Steps
 
 ### Phase 1: Update MongoDB Atlas Connection
-1. Update docker-compose.yml to set MONGODB_URI environment variable
+1. Update docker-compose.yml to set the Atlas environment variable
 2. Add MongoDB connection string to all required services
 3. Configure service discovery for cross-service communication
 

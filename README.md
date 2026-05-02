@@ -8,7 +8,7 @@ An integrated IoT-ML remote critical care platform with a Next.js ICU command ce
 apps/web                      Next.js App Router frontend
   app                         landing page, dashboard page, global styles
   components                  ICU cards, ECG, bed map, 3D digital twin, analytics
-  lib                         Zustand store, demo clinical data, frontend types
+  lib                         Zustand store, clinical helpers, frontend types
 services/api-gateway          REST edge service and upstream routing
 services/auth                 JWT login, RBAC identity, user context
 services/patient              patient CRUD, dashboard aggregation
@@ -21,7 +21,7 @@ services/audit                immutable audit log API
 packages/shared               schemas, types, scoring, DB indexes, events
 docker                        compose stack and Dockerfiles
 tests                         architecture and clinical logic tests
-scripts                       seed demo clinical data
+scripts                       seed clinical data
 ```
 
 ## 2. Frontend Code
@@ -44,7 +44,7 @@ Key UI files:
 - `apps/web/components/BedMap.tsx`: 2D bed grid plus 3D ICU digital twin.
 - `apps/web/components/AlertRail.tsx`: severity-ranked alert queue.
 - `apps/web/components/AnalyticsPanel.tsx`: trends, risk distribution, and heatmap-style bed utilization.
-- `apps/web/lib/store.ts`: Zustand state, WebSocket client, offline-safe fallback.
+- `apps/web/lib/store.ts`: Zustand state, WebSocket client, empty-state handling.
 
 ## 3. Backend Code
 
@@ -58,7 +58,7 @@ Each TypeScript service is container-ready and exposes `/health`.
 - `services/analytics`: summary analytics and generated PDF report endpoint.
 - `services/audit`: compliance log ingestion and retrieval.
 
-The shared layer in `packages/shared` contains Zod schemas, TypeScript contracts, MongoDB index metadata, JWT helpers, event names, clinical risk scoring, and demo seed data.
+The shared layer in `packages/shared` contains Zod schemas, TypeScript contracts, MongoDB index metadata, JWT helpers, event names, and clinical risk scoring.
 
 ## 4. ML Service Code
 
@@ -117,7 +117,7 @@ The system supports both MongoDB Atlas (SRV) and local MongoDB connections.
 
 **Production - MongoDB Atlas (SRV):**
 ```bash
-MONGODB_URI=mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/
+MONGODB_ATLAS_URI=mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/
 ```
 
 **Development - Local MongoDB:**
@@ -125,7 +125,7 @@ MONGODB_URI=mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/
 MONGODB_URI=mongodb://mongo:27017/icu
 ```
 
-The connection string can be configured via the `MONGODB_URI` environment variable.
+The production connection string can be configured via `MONGODB_ATLAS_URI` or `MONGODB_URI`.
 The docker-compose.yml uses environment variable substitution to support both connection types.
 
 ## 7. API Endpoints
@@ -179,6 +179,7 @@ Local development:
 
 ```bash
 cp .env.example .env
+corepack enable
 pnpm install
 docker compose -f docker/docker-compose.yml up redis mongo
 pnpm dev
@@ -192,13 +193,32 @@ docker compose -f docker/docker-compose.yml up --build
 
 Production targets:
 
-- Frontend: Vercel
-- API Gateway and TypeScript services: Render or Railway Docker services
-- ML Service: separate Render/Railway container
+- Frontend: Vercel Next.js app
+- Backend API routes: Vercel Node runtime at `/api/*` (in the same deployment)
+- Optional upstream microservices: any HTTPS host (Render, Railway, Fly, etc.)
+- Optional realtime WebSocket service: external host via `NEXT_PUBLIC_WS_URL`
+- ML Service: separate container host
 - Database: MongoDB Atlas
 - Cache/events: Redis Cloud
 
 Required production environment variables are listed in `.env.example`.
+
+### Vercel Setup (Frontend + Backend)
+
+1. Import this repository into Vercel.
+2. Keep root as repository root (monorepo).
+3. Build/install commands are already configured in `vercel.json`.
+4. Add environment variables in Vercel Project Settings:
+  - `MONGODB_ATLAS_URI=mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/`
+  - `JWT_SECRET` and `JWT_REFRESH_SECRET`
+  - `NEXT_PUBLIC_API_URL` left blank for same-origin API usage
+  - Optional upstream URLs: `AUTH_SERVICE_URL`, `PATIENT_SERVICE_URL`, `VITALS_SERVICE_URL`, `NOTIFICATION_SERVICE_URL`, `ANALYTICS_SERVICE_URL`, `AUDIT_SERVICE_URL`
+  - Optional realtime URL: `NEXT_PUBLIC_WS_URL`
+5. Deploy. Your backend endpoints are served at the same domain:
+  - `/api/health`
+  - `/api/dashboard`
+  - `/api/vitals/latest`
+  - `/api/analytics/*`, `/api/auth/*`, `/api/patients*`, `/api/alerts*`, `/api/audit*`
 
 ## 10. UI Explanation
 
@@ -209,7 +229,7 @@ The interface uses a hospital-grade dark monitor language with restrained SaaS l
 - ICU bed map combines a 2D operational layout with a Three.js digital twin.
 - Alert rail prioritizes critical alerts and supports emergency-mode visual escalation.
 - Analytics panel shows risk distribution, unit-wide averages, alert trend, and bed utilization.
-- Theme toggle and offline-safe fallback make demos resilient.
+- Theme toggle and offline-safe handling keep the UI stable.
 
 ## 11. Data Flow Explanation
 
@@ -249,10 +269,8 @@ Run tests:
 pnpm test
 ```
 
-Demo login:
+Authentication:
 
 ```txt
-dr.carter@icu.local / StrongPass123!
-nurse.lee@icu.local / StrongPass123!
-admin@icu.local / StrongPass123!
+Use a registered account from the auth service.
 ```

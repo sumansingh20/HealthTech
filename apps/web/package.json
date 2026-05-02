@@ -15,6 +15,7 @@
     "@icu/shared": "workspace:*",
     "framer-motion": "^11.15.0",
     "lucide-react": "^0.468.0",
+    "mongodb": "^5.9.2",
     "next": "^15.1.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

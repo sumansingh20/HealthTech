@@ -1,9 +1,6 @@
 import {
   createId,
   createServer,
-  demoDevices,
-  demoPatients,
-  demoVitals,
   healthResponse,
   sendJson,
   type VitalReading
@@ -14,7 +11,7 @@ type Scenario = 'normal' | 'gradual-deterioration' | 'sudden-spike';
 const serviceName = 'iot-simulator';
 const port = Number(process.env.PORT ?? 4005);
 const vitalsUrl = process.env.VITALS_SERVICE_URL ?? 'http://localhost:4003';
-const state = new Map<string, VitalReading>(demoVitals.map((reading) => [reading.patientId, reading]));
+const state = new Map<string, VitalReading>();
 let scenario: Scenario = 'gradual-deterioration';
 let streaming = process.env.IOT_AUTOSTART !== 'false';
 
@@ -28,9 +25,8 @@ function clamp(value: number, min: number, max: number, digits = 0) {
 }
 
 function synthesize(previous: VitalReading, activeScenario: Scenario): VitalReading {
-  const device = demoDevices.find((item) => item.patientId === previous.patientId);
-  const patient = demoPatients.find((item) => item.id === previous.patientId);
-  const criticalBias = patient?.status === 'critical' ? 1.8 : patient?.status === 'watching' ? 0.8 : 0.15;
+  const device = { id: `device_${previous.patientId}` };
+  const criticalBias = 0.15;
   const spike = activeScenario === 'sudden-spike' && Math.random() < 0.28;
   const deterioration = activeScenario === 'gradual-deterioration' ? criticalBias : 0;
 
@@ -49,7 +45,7 @@ function synthesize(previous: VitalReading, activeScenario: Scenario): VitalRead
 async function emitBatch() {
   if (!streaming) return;
 
-  for (const patient of demoPatients) {
+  for (const patient of []) {
     const previous = state.get(patient.id);
     if (!previous) continue;
     const reading = synthesize(previous, scenario);
@@ -72,7 +68,7 @@ const server = createServer([
   {
     method: 'GET',
     pattern: /^\/iot\/state$|^\/state$/,
-    handler: ({ res }) => sendJson(res, 200, { streaming, scenario, patients: demoPatients, readings: Array.from(state.values()) })
+    handler: ({ res }) => sendJson(res, 200, { streaming, scenario, patients: [], readings: Array.from(state.values()) })
   },
   {
     method: 'POST',
@@ -94,14 +90,10 @@ const server = createServer([
     pattern: /^\/iot\/emit$|^\/emit$/,
     handler: async ({ res }) => {
       await emitBatch();
-      sendJson(res, 202, { emitted: demoPatients.length, scenario });
+      sendJson(res, 202, { emitted: state.size, scenario });
     }
   }
 ]);
-
-setInterval(() => {
-  void emitBatch();
-}, Number(process.env.IOT_INTERVAL_MS ?? 1800));
 
 server.listen(port, () => {
   console.log(`${serviceName} listening on :${port}; streaming=${streaming}; scenario=${scenario}`);

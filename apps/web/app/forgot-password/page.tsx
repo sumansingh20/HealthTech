@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Heart, Mail, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
+import { getApiBaseUrl } from '../../lib/api';
 
 interface ForgotForm {
   email: string;
@@ -20,7 +21,7 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/forgot-password`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)

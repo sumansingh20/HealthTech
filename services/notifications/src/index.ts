@@ -2,33 +2,26 @@ import {
   createEvent,
   createId,
   createServer,
-  demoAlerts,
   healthResponse,
   matchId,
   sendJson,
   type Alert
 } from '@icu/shared';
+import { getMongoDb } from '@icu/shared/mongo';
 
 const serviceName = 'notification-service';
 const port = Number(process.env.PORT ?? 4006);
-const alerts = new Map<string, Alert>(demoAlerts.map((alert) => [alert.id, alert]));
-const notificationOutbox: Array<{
-  id: string;
-  alertId: string;
-  channel: 'email' | 'sms';
-  recipient: string;
-  status: 'queued' | 'sent';
-  createdAt: string;
-}> = [];
+let alertsColl: any = null;
+let outboxColl: any = null;
 
-function queueNotification(alert: Alert) {
+async function queueNotification(alert: Alert) {
   const recipients = [
     { channel: 'sms' as const, recipient: '+15550100100' },
     { channel: 'email' as const, recipient: 'icu-charge@hospital.local' }
   ];
 
   for (const target of recipients) {
-    notificationOutbox.unshift({
+    await outboxColl.insertOne({
       id: createId('notification'),
       alertId: alert.id,
       channel: target.channel,
@@ -37,10 +30,6 @@ function queueNotification(alert: Alert) {
       createdAt: new Date().toISOString()
     });
   }
-}
-
-for (const alert of alerts.values()) {
-  queueNotification(alert);
 }
 
 const server = createServer([
@@ -52,12 +41,16 @@ const server = createServer([
   {
     method: 'GET',
     pattern: /^\/alerts$/,
-    handler: ({ res }) => sendJson(res, 200, { alerts: Array.from(alerts.values()), notifications: notificationOutbox })
+    handler: async ({ res }) => {
+      const all = await alertsColl.find({}).sort({ createdAt: -1 }).limit(200).toArray().catch(() => []);
+      const outbox = await outboxColl.find({}).sort({ createdAt: -1 }).limit(200).toArray().catch(() => []);
+      sendJson(res, 200, { alerts: all, notifications: outbox });
+    }
   },
   {
     method: 'POST',
     pattern: /^\/alerts$/,
-    handler: ({ res, body }) => {
+    handler: async ({ res, body }) => {
       const incoming = body as Partial<Alert>;
       const alert: Alert = {
         id: createId('alert'),
@@ -66,8 +59,8 @@ const server = createServer([
         message: incoming.message ?? 'Clinical warning threshold crossed',
         createdAt: new Date().toISOString()
       };
-      alerts.set(alert.id, alert);
-      queueNotification(alert);
+      await alertsColl.insertOne(alert);
+      await queueNotification(alert);
       sendJson(res, 201, {
         alert,
         event: createEvent({ id: createId('event'), name: 'alert.created', source: serviceName, payload: alert })
@@ -77,21 +70,17 @@ const server = createServer([
   {
     method: 'POST',
     pattern: /^\/alerts\/[^/]+\/ack$/,
-    handler: ({ res, pathname, body }) => {
+    handler: async ({ res, pathname, body }) => {
       const id = pathname.split('/').at(-2);
-      const alert = id ? alerts.get(id) : undefined;
-      if (!alert) {
+      const existing = id ? await alertsColl.findOne({ id }) : null;
+      if (!existing) {
         sendJson(res, 404, { error: 'alert_not_found' });
         return;
       }
 
       const actor = (body as { actorId?: string }).actorId ?? 'system';
-      const acknowledged: Alert = {
-        ...alert,
-        acknowledgedAt: new Date().toISOString(),
-        acknowledgedBy: actor
-      };
-      alerts.set(acknowledged.id, acknowledged);
+      const acknowledged = { ...existing, acknowledgedAt: new Date().toISOString(), acknowledgedBy: actor };
+      await alertsColl.updateOne({ id: existing.id }, { $set: acknowledged });
       sendJson(res, 200, {
         alert: acknowledged,
         event: createEvent({ id: createId('event'), name: 'alert.acknowledged', source: serviceName, payload: acknowledged })
@@ -101,23 +90,32 @@ const server = createServer([
   {
     method: 'POST',
     pattern: /^\/notifications\/simulate$/,
-    handler: ({ res }) => {
-      for (const notification of notificationOutbox) {
-        notification.status = 'sent';
-      }
+    handler: async ({ res }) => {
+      const result = await outboxColl.updateMany({ status: 'queued' }, { $set: { status: 'sent' } }).catch(() => ({ modifiedCount: 0 }));
+      const sent = result.modifiedCount ?? 0;
       sendJson(res, 200, {
-        sent: notificationOutbox.length,
-        event: createEvent({
-          id: createId('event'),
-          name: 'notification.sent',
-          source: serviceName,
-          payload: { sent: notificationOutbox.length }
-        })
+        sent,
+        event: createEvent({ id: createId('event'), name: 'notification.sent', source: serviceName, payload: { sent } })
       });
     }
   }
 ]);
 
-server.listen(port, () => {
-  console.log(`${serviceName} listening on :${port}`);
-});
+async function initAndListen() {
+  try {
+    const db = await getMongoDb();
+    alertsColl = db.collection('alerts');
+    outboxColl = db.collection('notifications_outbox');
+    await alertsColl.createIndex({ patientId: 1, createdAt: -1 }).catch(() => {});
+    await outboxColl.createIndex({ status: 1, createdAt: -1 }).catch(() => {});
+
+    server.listen(port, () => {
+      console.log(`${serviceName} listening on :${port}`);
+    });
+  } catch (err) {
+    console.error('Failed to initialize database connection', err);
+    process.exit(1);
+  }
+}
+
+void initAndListen();

@@ -5,9 +5,6 @@ import {
   computeRiskLevel,
   createEvent,
   createId,
-  demoDevices,
-  demoPatients,
-  demoVitals,
   deriveAlertSeverity,
   healthResponse,
   predictionFromReading,
@@ -16,23 +13,17 @@ import {
   vitalReadingSchema,
   type Alert,
   type Prediction,
-  type VitalReading
+  type VitalReading,
+  getMongoDb
 } from '@icu/shared';
 
 const serviceName = 'vitals-service';
 const port = Number(process.env.PORT ?? 4003);
 const notificationUrl = process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:4006';
 
-const histories = new Map<string, VitalReading[]>();
-const latest = new Map<string, VitalReading>();
-const predictions = new Map<string, Prediction>();
-const alerts = new Map<string, Alert>();
-
-for (const reading of demoVitals) {
-  histories.set(reading.patientId, [reading]);
-  latest.set(reading.patientId, reading);
-  predictions.set(reading.patientId, predictionFromReading(reading));
-}
+let vitalsColl: any = null;
+let predictionsColl: any = null;
+let alertsColl: any = null;
 
 const redis = process.env.REDIS_URL ? new Redis(process.env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1 }) : undefined;
 void redis?.connect().catch(() => undefined);
@@ -46,10 +37,7 @@ async function publish(channel: string, payload: unknown) {
 }
 
 function patientProfile(patientId: string) {
-  const patient = demoPatients.find((item) => item.id === patientId);
-  if (patient?.status === 'critical') return { drift: 1.8, volatility: 2.2, spikeChance: 0.12 };
-  if (patient?.status === 'watching') return { drift: 0.7, volatility: 1.35, spikeChance: 0.06 };
-  return { drift: -0.05, volatility: 0.7, spikeChance: 0.02 };
+  return { drift: 0, volatility: 0.7, spikeChance: 0.01 };
 }
 
 function bounded(value: number, min: number, max: number, digits = 0): number {
@@ -84,24 +72,18 @@ async function sendNotification(alert: Alert) {
 
 async function ingest(reading: VitalReading) {
   const parsed = vitalReadingSchema.parse(reading);
-  const history = histories.get(parsed.patientId) ?? [];
-  const nextHistory = [...history.slice(-179), parsed];
   const risk = computeRiskLevel(parsed);
   const prediction = predictionFromReading(parsed, 'random-forest');
   const severity = deriveAlertSeverity(risk.score);
 
-  histories.set(parsed.patientId, nextHistory);
-  latest.set(parsed.patientId, parsed);
-  predictions.set(parsed.patientId, prediction);
+  // persist reading and prediction
+  await vitalsColl.insertOne(parsed);
+  await predictionsColl.insertOne({ ...prediction, timestamp: parsed.timestamp });
+  // update latest document for patient
+  await vitalsColl.updateOne({ patientId: parsed.patientId, latest: true }, { $set: { ...parsed, latest: true }, $unset: {} }, { upsert: true }).catch(() => {});
 
-  await publish(
-    REDIS_CHANNELS.vitals,
-    createEvent({ id: createId('event'), name: 'vitals.reading.ingested', source: serviceName, payload: parsed })
-  );
-  await publish(
-    REDIS_CHANNELS.predictions,
-    createEvent({ id: createId('event'), name: 'prediction.generated', source: serviceName, payload: prediction })
-  );
+  await publish(REDIS_CHANNELS.vitals, createEvent({ id: createId('event'), name: 'vitals.reading.ingested', source: serviceName, payload: parsed }));
+  await publish(REDIS_CHANNELS.predictions, createEvent({ id: createId('event'), name: 'prediction.generated', source: serviceName, payload: prediction }));
 
   if (severity !== 'normal') {
     const alert: Alert = {
@@ -111,7 +93,7 @@ async function ingest(reading: VitalReading) {
       message: `${severity === 'critical' ? 'Critical' : 'Warning'} vitals threshold crossed: ${risk.reasons.join(', ')}`,
       createdAt: parsed.timestamp
     };
-    alerts.set(alert.id, alert);
+    await alertsColl.insertOne(alert);
     await publish(REDIS_CHANNELS.alerts, createEvent({ id: createId('event'), name: 'alert.created', source: serviceName, payload: alert }));
     await sendNotification(alert);
   }
@@ -129,17 +111,17 @@ const httpServer = createHttpServer(async (req, res) => {
   }
 
   if (method === 'GET' && pathname === '/vitals/latest') {
-    sendJson(res, 200, {
-      readings: Array.from(latest.values()),
-      predictions: Array.from(predictions.values()),
-      alerts: Array.from(alerts.values()).slice(0, 20)
-    });
+    const readings = await vitalsColl.find({ latest: true }).toArray().catch(() => []);
+    const preds = await predictionsColl.find({}).sort({ timestamp: -1 }).limit(50).toArray().catch(() => []);
+    const al = await alertsColl.find({}).sort({ createdAt: -1 }).limit(20).toArray().catch(() => []);
+    sendJson(res, 200, { readings, predictions: preds, alerts: al });
     return;
   }
 
   if (method === 'GET' && /^\/vitals\/[^/]+\/history$/.test(pathname)) {
     const patientId = pathname.split('/').at(-2);
-    sendJson(res, 200, { patientId, history: patientId ? histories.get(patientId) ?? [] : [] });
+    const history = patientId ? await vitalsColl.find({ patientId }).sort({ timestamp: -1 }).limit(180).toArray().catch(() => []) : [];
+    sendJson(res, 200, { patientId, history });
     return;
   }
 
@@ -171,29 +153,31 @@ function broadcast(payload: unknown) {
   }
 }
 
-wss.on('connection', (socket) => {
-  socket.send(
-    JSON.stringify({
-      type: 'snapshot',
-      patients: demoPatients,
-      devices: demoDevices,
-      readings: Array.from(latest.values()),
-      predictions: Array.from(predictions.values()),
-      alerts: Array.from(alerts.values())
-    })
-  );
+wss.on('connection', async (socket) => {
+  const readings = await vitalsColl.find({ latest: true }).toArray().catch(() => []);
+  const preds = await predictionsColl.find({}).sort({ timestamp: -1 }).limit(50).toArray().catch(() => []);
+  const al = await alertsColl.find({}).sort({ createdAt: -1 }).limit(50).toArray().catch(() => []);
+  socket.send(JSON.stringify({ type: 'snapshot', patients: [], devices: [], readings, predictions: preds, alerts: al }));
 });
 
-setInterval(() => {
-  void Promise.all(
-    demoPatients.map(async (patient) => {
-      const previous = latest.get(patient.id) ?? demoVitals.find((reading) => reading.patientId === patient.id);
-      if (!previous) return undefined;
-      return ingest(nextReading(previous));
-    })
-  );
-}, Number(process.env.STREAM_INTERVAL_MS ?? 1600));
+async function initAndListen() {
+  try {
+    const db = await getMongoDb();
+    vitalsColl = db.collection('vitals');
+    predictionsColl = db.collection('predictions');
+    alertsColl = db.collection('alerts');
+    await vitalsColl.createIndex({ patientId: 1, timestamp: -1 }).catch(() => {});
+    await vitalsColl.createIndex({ latest: 1 }).catch(() => {});
+    await predictionsColl.createIndex({ patientId: 1, timestamp: -1 }).catch(() => {});
+    await alertsColl.createIndex({ patientId: 1, createdAt: -1 }).catch(() => {});
 
-httpServer.listen(port, () => {
-  console.log(`${serviceName} HTTP/WebSocket listening on :${port} (ws://localhost:${port}/ws)`);
-});
+    httpServer.listen(port, () => {
+      console.log(`${serviceName} HTTP/WebSocket listening on :${port} (ws://localhost:${port}/ws)`);
+    });
+  } catch (err) {
+    console.error('Failed to initialize database connection', err);
+    process.exit(1);
+  }
+}
+
+void initAndListen();

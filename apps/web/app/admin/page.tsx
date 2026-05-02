@@ -7,6 +7,7 @@ import {
   Search, Filter, Download, RefreshCw, CheckCircle, XCircle,
   UserPlus, Settings, FileText, ChevronRight
 } from 'lucide-react';
+import { getApiBaseUrl } from '../../lib/api';
 
 interface UserRecord {
   id: string;
@@ -48,33 +49,25 @@ export default function AdminPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
-      
+      const apiUrl = getApiBaseUrl();
+
       const [usersRes, logsRes] = await Promise.all([
-        fetch(`${apiUrl}/api/users`).catch(() => ({ ok: false })),
-        fetch(`${apiUrl}/api/audit/logs`).catch(() => ({ ok: false }))
+        fetch(`${apiUrl}/api/users`).catch(() => null),
+        fetch(`${apiUrl}/api/audit/logs`).catch(() => null)
       ]);
 
-      if (usersRes.ok) {
+      if (usersRes?.ok) {
         const usersData = await usersRes.json();
         setUsers(usersData.users ?? []);
       } else {
-        // Fallback demo data
-        setUsers([
-          { id: 'user_doctor_maya', email: 'dr.carter@icu.local', name: 'Dr. Maya Carter', role: 'doctor', active: true, createdAt: new Date().toISOString() },
-          { id: 'user_nurse_lee', email: 'nurse.lee@icu.local', name: 'Nurse Daniel Lee', role: 'nurse', active: true, createdAt: new Date().toISOString() },
-          { id: 'user_admin_ops', email: 'admin@icu.local', name: 'Operations Admin', role: 'admin', active: true, createdAt: new Date().toISOString() }
-        ]);
+        setUsers([]);
       }
 
-      if (logsRes.ok) {
+      if (logsRes?.ok) {
         const logsData = await logsRes.json();
         setLogs(logsData.logs ?? []);
       } else {
-        setLogs([
-          { id: 'log_1', actorId: 'user_doctor_maya', actorRole: 'doctor', action: 'patient.read', resource: 'patient', createdAt: new Date().toISOString() },
-          { id: 'log_2', actorId: 'user_nurse_lee', actorRole: 'nurse', action: 'alert.acknowledge', resource: 'alert', createdAt: new Date().toISOString() }
-        ]);
+        setLogs([]);
       }
     } catch (error) {
       console.error('Failed to fetch admin data:', error);
@@ -219,7 +212,7 @@ export default function AdminPage() {
                     ) : filteredUsers.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
-                          No users found
+                            No users yet
                         </td>
                       </tr>
                     ) : (

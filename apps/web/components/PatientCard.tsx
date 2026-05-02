@@ -2,7 +2,7 @@
 
 import { Activity, AlertTriangle, HeartPulse } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { riskFromReading } from '../lib/demo-data';
+import { riskFromReading } from '../lib/clinical';
 import { useIcuStore } from '../lib/store';
 import type { DashboardPatient } from '../lib/types';
 import { EcgWave } from './EcgWave';

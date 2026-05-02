@@ -11,10 +11,13 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.string().optional(),
   // MongoDB URI - supports both standard and SRV connections
-  MONGODB_URI: z.string().refine(
-    (val) => mongoDbSrvPattern.test(val) || mongoDbPattern.test(val) || val.startsWith('mongodb://'),
-    { message: 'Invalid MongoDB connection string' }
-  ),
+  MONGODB_URI: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || mongoDbSrvPattern.test(val) || mongoDbPattern.test(val) || val.startsWith('mongodb://'),
+      { message: 'Invalid MongoDB connection string' }
+    ),
   // Alternate MongoDB URI for specific services (optional)
   MONGODB_ATLAS_URI: z.string().optional(),
   REDIS_URL: z.string().url(),
@@ -40,7 +43,11 @@ const envSchema = z.object({
   TWILIO_FROM: z.string().optional()
 });
 
-export const env = envSchema.parse(process.env);
+export const env = envSchema
+  .refine((value) => Boolean(value.MONGODB_ATLAS_URI || value.MONGODB_URI), {
+    message: 'Set MONGODB_ATLAS_URI or MONGODB_URI'
+  })
+  .parse(process.env);
 
 /**
  * Get MongoDB connection URI with support for both Atlas SRV and local connections

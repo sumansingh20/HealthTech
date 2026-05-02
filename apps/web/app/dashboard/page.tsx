@@ -10,10 +10,11 @@ import { BedMap } from '../../components/BedMap';
 import { DashboardHeader } from '../../components/DashboardHeader';
 import { PatientCard } from '../../components/PatientCard';
 import { PatientDetail } from '../../components/PatientDetail';
+import { getApiBaseUrl } from '../../lib/api';
 import { connectVitalsSocket, useIcuStore } from '../../lib/store';
 import type { AnalyticsSummary, DashboardSnapshot } from '../../lib/types';
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+const apiUrl = getApiBaseUrl();
 
 export default function DashboardPage() {
   const snapshot = useIcuStore((state) => state.snapshot);
@@ -41,6 +42,7 @@ export default function DashboardPage() {
     () => snapshot.patients.find((patient) => patient.id === selectedPatientId) ?? snapshot.patients[0],
     [selectedPatientId, snapshot.patients]
   );
+  const hasPatients = snapshot.patients.length > 0;
 
   return (
     <main className={`${theme === 'light' ? 'light-theme' : ''} min-h-screen bg-[var(--bg)] text-[var(--text)]`}>
@@ -51,6 +53,11 @@ export default function DashboardPage() {
         </div>
       )}
       <div className="monitor-grid mx-auto max-w-[1800px] px-4 py-5 md:px-6">
+        {!hasPatients && (
+          <section className="mb-5 rounded-[8px] border border-icu-line bg-[var(--panel)] p-5 text-sm text-[var(--muted)] shadow-monitor">
+            No patient records are available yet. Create patients and connect a live vitals source to populate the dashboard.
+          </section>
+        )}
         <section className="grid gap-3 md:grid-cols-4">
           <Kpi icon={<UsersRound className="h-5 w-5" />} label="Occupied Beds" value={`${snapshot.capacity.occupied}/${snapshot.capacity.beds}`} />
           <Kpi icon={<HeartPulse className="h-5 w-5" />} label="Critical Patients" value={`${snapshot.capacity.critical}`} tone="text-icu-red" />

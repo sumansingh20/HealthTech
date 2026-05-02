@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { waveform } from '../lib/demo-data';
+import { waveform } from '../lib/clinical';
 
 export function EcgWave({ tone = 'green', height = 72 }: { tone?: 'green' | 'cyan' | 'red' | 'amber'; height?: number }) {
   const points = waveform(120);

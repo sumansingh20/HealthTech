@@ -3,12 +3,6 @@ import {
   createId,
   createPatientSchema,
   createServer,
-  demoAlerts,
-  demoDevices,
-  demoPatients,
-  demoPredictions,
-  demoTimeline,
-  demoVitals,
   healthResponse,
   makeTrend,
   matchId,
@@ -21,32 +15,36 @@ import {
   type Prediction,
   type VitalReading
 } from '@icu/shared';
+import { getMongoDb } from '@icu/shared';
 
 const serviceName = 'patient-service';
 const port = Number(process.env.PORT ?? 4002);
 
-const patients = new Map<string, Patient>(demoPatients.map((patient) => [patient.id, patient]));
-const devices = new Map<string, Device>(demoDevices.map((device) => [device.patientId, device]));
-const vitals = new Map<string, VitalReading>(demoVitals.map((reading) => [reading.patientId, reading]));
-const predictions = new Map<string, Prediction>(demoPredictions.map((prediction) => [prediction.patientId, prediction]));
-const alerts = demoAlerts;
+let patientsColl: any = null;
+let devicesColl: any = null;
+let vitalsColl: any = null;
+let predictionsColl: any = null;
+let alertsColl: any = null;
 
-function dashboardPatient(patient: Patient): DashboardPatient {
-  const latestVitals = vitals.get(patient.id);
-  const latestPrediction = predictions.get(patient.id);
+async function dashboardPatient(patient: Patient): Promise<DashboardPatient> {
+  const latestVitals = await vitalsColl.findOne({ patientId: patient.id }, { sort: { timestamp: -1 } });
+  const latestPrediction = await predictionsColl.findOne({ patientId: patient.id }, { sort: { timestamp: -1 } });
+  const device = await devicesColl.findOne({ patientId: patient.id });
+  const activeAlerts = await alertsColl.find({ patientId: patient.id, acknowledgedAt: { $exists: false } }).toArray();
   return {
     ...patient,
-    ...(devices.get(patient.id) ? { device: devices.get(patient.id)! } : {}),
+    ...(device ? { device } : {}),
     ...(latestVitals ? { latestVitals } : {}),
     ...(latestPrediction ? { latestPrediction } : {}),
-    activeAlerts: alerts.filter((alert) => alert.patientId === patient.id && !alert.acknowledgedAt),
-    timeline: demoTimeline.filter((event) => event.patientId === patient.id),
-    trend: latestVitals ? makeTrend(latestVitals) : []
+    activeAlerts,
+    timeline: [],
+    trend: latestVitals ? makeTrend(latestVitals as VitalReading) : []
   };
 }
 
-function listPatients() {
-  return Array.from(patients.values()).sort((left, right) => left.bedId.localeCompare(right.bedId));
+async function listPatients() {
+  const docs = await patientsColl.find({}).sort({ bedId: 1 }).toArray();
+  return docs as Patient[];
 }
 
 const server = createServer([
@@ -58,12 +56,16 @@ const server = createServer([
   {
     method: 'GET',
     pattern: /^\/patients$/,
-    handler: ({ res }) => sendJson(res, 200, { patients: listPatients().map(dashboardPatient) })
+    handler: async ({ res }) => {
+      const pts = await listPatients();
+      const mapped = await Promise.all(pts.map((p) => dashboardPatient(p)));
+      sendJson(res, 200, { patients: mapped });
+    }
   },
   {
     method: 'POST',
     pattern: /^\/patients$/,
-    handler: ({ res, body }) => {
+    handler: async ({ res, body }) => {
       const parsed = createPatientSchema.parse(body);
       const patient = patientSchema.parse({
         id: createId('patient'),
@@ -79,7 +81,7 @@ const server = createServer([
         ...(parsed.allergies ? { allergies: parsed.allergies } : {}),
         ...(parsed.notes ? { notes: parsed.notes } : {})
       });
-      patients.set(patient.id, patient);
+      await patientsColl.insertOne(patient);
       sendJson(res, 201, {
         patient,
         event: createEvent({ id: createId('event'), name: 'patient.created', source: serviceName, payload: patient })
@@ -89,33 +91,42 @@ const server = createServer([
   {
     method: 'GET',
     pattern: /^\/patients\/[^/]+$/,
-    handler: ({ res, pathname }) => {
+    handler: async ({ res, pathname }) => {
       const id = matchId(pathname);
-      const patient = id ? patients.get(id) : undefined;
+      if (!id) {
+        sendJson(res, 400, { error: 'invalid_id' });
+        return;
+      }
+      const patient = await patientsColl.findOne({ id });
       if (!patient) {
         sendJson(res, 404, { error: 'patient_not_found' });
         return;
       }
-      sendJson(res, 200, { patient: dashboardPatient(patient) });
+      const view = await dashboardPatient(patient as Patient);
+      sendJson(res, 200, { patient: view });
     }
   },
   {
     method: 'PATCH',
     pattern: /^\/patients\/[^/]+$/,
-    handler: ({ res, pathname, body }) => {
+    handler: async ({ res, pathname, body }) => {
       const id = matchId(pathname);
-      const patient = id ? patients.get(id) : undefined;
-      if (!patient) {
+      if (!id) {
+        sendJson(res, 400, { error: 'invalid_id' });
+        return;
+      }
+      const existing = await patientsColl.findOne({ id });
+      if (!existing) {
         sendJson(res, 404, { error: 'patient_not_found' });
         return;
       }
-
       const next = patientSchema.partial().parse(body);
       const definedPatch = Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined));
-      const updated = patientSchema.parse({ ...patient, ...definedPatch, id: patient.id });
-      patients.set(patient.id, updated);
+      const updated = patientSchema.parse({ ...existing, ...definedPatch, id: existing.id });
+      await patientsColl.updateOne({ id: existing.id }, { $set: updated });
+      const view = await dashboardPatient(updated);
       sendJson(res, 200, {
-        patient: dashboardPatient(updated),
+        patient: view,
         event: createEvent({ id: createId('event'), name: 'patient.updated', source: serviceName, payload: updated })
       });
     }
@@ -123,17 +134,18 @@ const server = createServer([
   {
     method: 'GET',
     pattern: /^\/dashboard$/,
-    handler: ({ res }) => {
-      const patientViews = listPatients().map(dashboardPatient);
-      const activeAlerts: Alert[] = alerts.filter((alert) => !alert.acknowledgedAt);
+    handler: async ({ res }) => {
+      const pts = await listPatients();
+      const mapped = await Promise.all(pts.map((p) => dashboardPatient(p)));
+      const activeAlerts = await alertsColl.find({ acknowledgedAt: { $exists: false } }).toArray();
       sendJson(res, 200, {
         generatedAt: new Date().toISOString(),
-        patients: patientViews,
+        patients: mapped,
         capacity: {
           beds: 12,
-          occupied: patientViews.length,
-          critical: patientViews.filter((patient) => patient.status === 'critical').length,
-          warning: patientViews.filter((patient) => patient.status === 'watching').length
+          occupied: mapped.length,
+          critical: mapped.filter((patient) => patient.status === 'critical').length,
+          warning: mapped.filter((patient) => patient.status === 'watching').length
         },
         alerts: activeAlerts
       });
@@ -141,6 +153,27 @@ const server = createServer([
   }
 ]);
 
-server.listen(port, () => {
-  console.log(`${serviceName} listening on :${port}`);
-});
+async function initAndListen() {
+  try {
+    const db = await getMongoDb();
+    patientsColl = db.collection('patients');
+    devicesColl = db.collection('devices');
+    vitalsColl = db.collection('vitals');
+    predictionsColl = db.collection('predictions');
+    alertsColl = db.collection('alerts');
+    // Ensure simple indexes used by application
+    await patientsColl.createIndex({ mrn: 1 }, { unique: true }).catch(() => {});
+    await devicesColl.createIndex({ serialNumber: 1 }, { unique: true }).catch(() => {});
+    await vitalsColl.createIndex({ patientId: 1, timestamp: -1 }).catch(() => {});
+    await alertsColl.createIndex({ patientId: 1, createdAt: -1 }).catch(() => {});
+
+    server.listen(port, () => {
+      console.log(`${serviceName} listening on :${port}`);
+    });
+  } catch (err) {
+    console.error('Failed to initialize database connection', err);
+    process.exit(1);
+  }
+}
+
+void initAndListen();

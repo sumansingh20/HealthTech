@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   FileText, Download, Calendar, Filter, Search, 
-  Patient, Heart, Activity, Thermometer, Wind,
+  UserRound, Heart, Activity, Thermometer, Wind,
   ChevronDown, RefreshCw, Printer, Share2,
   Clock, AlertCircle
 } from 'lucide-react';
+import { getApiBaseUrl } from '../../lib/api';
 
 interface Report {
   id: string;
@@ -20,15 +21,6 @@ interface Report {
   status: 'ready' | 'generating';
 }
 
-const mockReports: Report[] = [
-  { id: 'RPT-001', patientName: 'Ava Thompson', patientId: 'patient_ava_thompson', bedId: 'B-01', type: 'patient', date: '2026-05-02', riskLevel: 'medium', status: 'ready' },
-  { id: 'RPT-002', patientName: 'Noah Patel', patientId: 'patient_noah_patel', bedId: 'B-02', type: 'patient', date: '2026-05-02', riskLevel: 'low', status: 'ready' },
-  { id: 'RPT-003', patientName: 'Lina Garcia', patientId: 'patient_lina_garcia', bedId: 'B-03', type: 'patient', date: '2026-05-02', riskLevel: 'critical', status: 'ready' },
-  { id: 'RPT-004', patientName: 'Omar Reed', patientId: 'patient_omar_reed', bedId: 'B-04', type: 'patient', date: '2026-05-01', riskLevel: 'medium', status: 'ready' },
-  { id: 'RPT-005', patientName: 'ICU Summary', patientId: 'all', bedId: '-', type: 'summary', date: '2026-05-02', riskLevel: 'medium', status: 'ready' },
-  { id: 'RPT-006', patientName: 'Analytics Report', patientId: 'all', bedId: '-', type: 'analytics', date: '2026-05-01', riskLevel: 'low', status: 'ready' }
-];
-
 const riskColors = {
   low: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   medium: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
@@ -36,16 +28,44 @@ const riskColors = {
 };
 
 const typeIcons = {
-  patient: Patient,
+  patient: UserRound,
   summary: FileText,
   analytics: Activity
 };
 
 export default function ReportsPage() {
-  const [reports] = useState<Report[]>(mockReports);
+  const [reports, setReports] = useState<Report[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const loadReports = async () => {
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/api/patients`);
+        if (!response.ok) {
+          setReports([]);
+          return;
+        }
+
+        const payload = await response.json() as { patients?: Array<{ id: string; name: string; bedId: string; latestPrediction?: { riskLevel: Report['riskLevel'] } }> };
+        setReports((payload.patients ?? []).map((patient) => ({
+          id: `RPT-${patient.id}`,
+          patientName: patient.name,
+          patientId: patient.id,
+          bedId: patient.bedId,
+          type: 'patient',
+          date: new Date().toISOString().slice(0, 10),
+          riskLevel: patient.latestPrediction?.riskLevel ?? 'low',
+          status: 'ready'
+        })));
+      } catch {
+        setReports([]);
+      }
+    };
+
+    void loadReports();
+  }, []);
 
   const filteredReports = reports.filter(report => {
     const matchesSearch = report.patientName.toLowerCase().includes(searchTerm.toLowerCase());
@@ -55,8 +75,6 @@ export default function ReportsPage() {
 
   const handleDownload = async (report: Report) => {
     setLoading(true);
-    // Simulate download
-    await new Promise(resolve => setTimeout(resolve, 1000));
     setLoading(false);
   };
 
@@ -90,7 +108,7 @@ export default function ReportsPage() {
             </div>
             <div className="flex flex-wrap gap-3">
               <button className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-xl transition-colors">
-                <Patient className="w-4 h-4" />
+                <UserRound className="w-4 h-4" />
                 Patient Report
               </button>
               <button className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-xl transition-colors">
@@ -138,6 +156,9 @@ export default function ReportsPage() {
 
         {/* Reports List */}
         <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
+          {filteredReports.length === 0 && (
+            <div className="px-4 py-10 text-center text-slate-400">No reports available yet.</div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -237,7 +258,7 @@ export default function ReportsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
           {[
             { label: 'Total Reports', value: '156', icon: FileText, color: 'cyan' },
-            { label: 'Patient Reports', value: '142', icon: Patient, color: 'emerald' },
+            { label: 'Patient Reports', value: '142', icon: UserRound, color: 'emerald' },
             { label: 'ICU Summaries', value: '12', icon: Activity, color: 'purple' },
             { label: 'Avg. Generation', value: '2.3s', icon: Clock, color: 'amber' }
           ].map((stat, index) => (

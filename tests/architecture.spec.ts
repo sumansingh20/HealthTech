@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { computeRiskLevel } from '../packages/shared/src/icu.js';
+import { computeRiskLevel, recommendationsFor, randomForestLikeProbability } from '../packages/shared/src/icu.js';
 import { createId } from '../packages/shared/src/security.js';
 import { createEvent, REDIS_CHANNELS } from '../packages/shared/src/events.js';
 import { databaseCollections } from '../packages/shared/src/db.js';
-import { predictionFromReading } from '../packages/shared/src/demo.js';
 
 describe('architecture primitives', () => {
   it('computes critical risk for unstable vitals', () => {
@@ -23,7 +22,7 @@ describe('architecture primitives', () => {
   });
 
   it('generates explainable prediction recommendations', () => {
-    const prediction = predictionFromReading({
+    const reading = {
       patientId: createId('patient'),
       deviceId: createId('device'),
       timestamp: new Date().toISOString(),
@@ -32,7 +31,13 @@ describe('architecture primitives', () => {
       systolic: 86,
       diastolic: 48,
       temperature: 38.9
-    });
+    };
+    const risk = computeRiskLevel(reading);
+    const prediction = {
+      riskLevel: risk.level,
+      probability: randomForestLikeProbability(reading),
+      recommendations: recommendationsFor(reading, risk.reasons)
+    };
 
     expect(prediction.riskLevel).toBe('critical');
     expect(prediction.probability).toBeGreaterThan(0.5);

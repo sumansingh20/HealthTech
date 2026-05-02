@@ -1,57 +1,55 @@
 import {
   computeRiskLevel,
   createServer,
-  demoAlerts,
-  demoPatients,
-  demoVitals,
   healthResponse,
-  makeTrend,
   matchId,
   sendJson,
   type AnalyticsSummary,
-  type RiskLevel
+  type RiskLevel,
+  getMongoDb
 } from '@icu/shared';
 
 const serviceName = 'analytics-service';
 const port = Number(process.env.PORT ?? 4007);
 
-function analyticsSummary(): AnalyticsSummary {
-  const distribution: Record<RiskLevel, number> = { low: 0, medium: 0, critical: 0 };
-  const totals = { heartRate: 0, spo2: 0, systolic: 0, diastolic: 0, temperature: 0 };
+let vitalsColl: any = null;
+let predictionsColl: any = null;
+let alertsColl: any = null;
 
-  for (const reading of demoVitals) {
-    distribution[computeRiskLevel(reading).level] += 1;
-    totals.heartRate += reading.heartRate;
-    totals.spo2 += reading.spo2;
-    totals.systolic += reading.systolic;
-    totals.diastolic += reading.diastolic;
-    totals.temperature += reading.temperature;
+async function analyticsSummary(): Promise<AnalyticsSummary> {
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 1000 * 60 * 60).toISOString();
+
+  const alertAgg = await alertsColl.aggregate([
+    { $match: { createdAt: { $gte: oneHourAgo } } },
+    { $group: { _id: '$severity', count: { $sum: 1 } } }
+  ]).toArray().catch(() => []);
+  const distribution = { low: 0, medium: 0, critical: 0 } as Record<RiskLevel, number>;
+  for (const a of alertAgg) {
+    if (a._id === 'critical') distribution.critical = a.count;
+    else if (a._id === 'warning') distribution.medium = a.count;
+    else distribution.low += a.count;
   }
 
-  const divisor = Math.max(demoVitals.length, 1);
+  const avgAgg = await vitalsColl.aggregate([
+    { $match: { timestamp: { $gte: oneHourAgo } } },
+    { $group: { _id: null, heartRate: { $avg: '$heartRate' }, spo2: { $avg: '$spo2' }, systolic: { $avg: '$systolic' }, diastolic: { $avg: '$diastolic' }, temperature: { $avg: '$temperature' } } }
+  ]).toArray().catch(() => []);
+
+  const avg = avgAgg[0] ?? { heartRate: 0, spo2: 0, systolic: 0, diastolic: 0, temperature: 0 };
+
   return {
     generatedAt: new Date().toISOString(),
     riskDistribution: distribution,
     averageVitals: {
-      heartRate: Math.round(totals.heartRate / divisor),
-      spo2: Number((totals.spo2 / divisor).toFixed(1)),
-      systolic: Math.round(totals.systolic / divisor),
-      diastolic: Math.round(totals.diastolic / divisor),
-      temperature: Number((totals.temperature / divisor).toFixed(1))
+      heartRate: Math.round(avg.heartRate ?? 0),
+      spo2: Math.round(avg.spo2 ?? 0),
+      systolic: Math.round(avg.systolic ?? 0),
+      diastolic: Math.round(avg.diastolic ?? 0),
+      temperature: Number((avg.temperature ?? 0).toFixed(1))
     },
-    alertBurndown: Array.from({ length: 12 }, (_, index) => ({
-      hour: `${String(index).padStart(2, '0')}:00`,
-      warning: demoAlerts.filter((alert) => alert.severity === 'warning').length + (index % 3),
-      critical: demoAlerts.filter((alert) => alert.severity === 'critical').length + (index % 2)
-    })),
-    bedUtilization: demoPatients.map((patient) => {
-      const reading = demoVitals.find((item) => item.patientId === patient.id);
-      return {
-        bedId: patient.bedId,
-        riskScore: reading ? computeRiskLevel(reading).score : 0,
-        status: patient.status
-      };
-    })
+    alertBurndown: Array.from({ length: 12 }, (_, index) => ({ hour: `${String(index).padStart(2, '0')}:00`, warning: 0, critical: 0 })),
+    bedUtilization: []
   };
 }
 
@@ -91,25 +89,22 @@ const server = createServer([
   {
     method: 'GET',
     pattern: /^\/analytics\/summary$|^\/summary$/,
-    handler: ({ res }) => sendJson(res, 200, analyticsSummary())
+    handler: async ({ res }) => sendJson(res, 200, await analyticsSummary())
   },
   {
     method: 'GET',
     pattern: /^\/analytics\/patients\/[^/]+$/,
     handler: ({ res, pathname }) => {
       const patientId = matchId(pathname);
-      const patient = demoPatients.find((item) => item.id === patientId);
-      const reading = demoVitals.find((item) => item.patientId === patientId);
-
-      if (!patient || !reading) {
+      if (!patientId) {
         sendJson(res, 404, { error: 'patient_report_not_found' });
         return;
       }
 
       sendJson(res, 200, {
-        patient,
-        trend: makeTrend(reading, 48),
-        modelObservations: computeRiskLevel(reading)
+        patientId,
+        trend: [],
+        modelObservations: { level: 'low', score: 0, reasons: [] }
       });
     }
   },
@@ -118,22 +113,14 @@ const server = createServer([
     pattern: /^\/analytics\/reports\/[^/]+\.pdf$/,
     handler: ({ res, pathname }) => {
       const patientId = pathname.split('/').at(-1)?.replace('.pdf', '');
-      const patient = demoPatients.find((item) => item.id === patientId);
-      const reading = demoVitals.find((item) => item.patientId === patientId);
-      if (!patient || !reading) {
+      if (!patientId) {
         sendJson(res, 404, { error: 'patient_report_not_found' });
         return;
       }
-      const risk = computeRiskLevel(reading);
       const pdf = minimalPdf([
         'AI ICU Monitoring Report',
-        `Patient: ${patient.name} (${patient.mrn})`,
-        `Bed: ${patient.bedId}`,
-        `Risk Level: ${risk.level.toUpperCase()} (${risk.score}/100)`,
-        `Heart Rate: ${reading.heartRate} bpm`,
-        `SpO2: ${reading.spo2}%`,
-        `Blood Pressure: ${reading.systolic}/${reading.diastolic} mmHg`,
-        `Temperature: ${reading.temperature} C`,
+        `Patient ID: ${patientId}`,
+        'No patient data available',
         `Generated: ${new Date().toISOString()}`
       ]);
       res.statusCode = 200;
@@ -147,3 +134,23 @@ const server = createServer([
 server.listen(port, () => {
   console.log(`${serviceName} listening on :${port}`);
 });
+
+async function initAndListen() {
+  try {
+    const db = await getMongoDb();
+    vitalsColl = db.collection('vitals');
+    predictionsColl = db.collection('predictions');
+    alertsColl = db.collection('alerts');
+    await vitalsColl.createIndex({ patientId: 1, timestamp: -1 }).catch(() => {});
+    await alertsColl.createIndex({ createdAt: -1 }).catch(() => {});
+
+    server.listen(port, () => {
+      console.log(`${serviceName} listening on :${port}`);
+    });
+  } catch (err) {
+    console.error('Failed to initialize database connection', err);
+    process.exit(1);
+  }
+}
+
+void initAndListen();

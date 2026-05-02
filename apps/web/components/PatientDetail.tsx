@@ -1,7 +1,8 @@
 'use client';
 
 import { BrainCircuit, FileDown, ShieldAlert } from 'lucide-react';
-import { riskFromReading } from '../lib/demo-data';
+import { riskFromReading } from '../lib/clinical';
+import { getApiBaseUrl } from '../lib/api';
 import type { DashboardPatient } from '../lib/types';
 import { EcgWave } from './EcgWave';
 import { MiniChart } from './MiniChart';
@@ -18,7 +19,7 @@ export function PatientDetail({ patient }: { patient: DashboardPatient }) {
           <p className="mt-1 text-sm text-[var(--muted)]">{patient.age} yrs · {patient.bedId} · {patient.mrn}</p>
         </div>
         <a
-          href={`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'}/api/analytics/reports/${patient.id}.pdf`}
+          href={`${getApiBaseUrl()}/api/analytics/reports/${patient.id}.pdf`}
           className="inline-flex h-10 w-10 items-center justify-center rounded-[8px] border border-icu-line bg-black/20 text-icu-cyan transition hover:border-icu-cyan"
           title="Export ICU report"
         >

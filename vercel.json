@@ -1,18 +1,26 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "cd apps/web && pnpm build",
-  "installCommand": "cd apps/web && pnpm install",
-  "devCommand": "cd apps/web && pnpm dev",
+  "buildCommand": "corepack enable && pnpm --filter @icu/shared build && pnpm --filter web build",
+  "installCommand": "corepack enable && pnpm install --frozen-lockfile",
+  "devCommand": "corepack enable && pnpm --filter web dev",
   "outputDirectory": "apps/web/.next",
-  "regions": ["iad1"],
-  "env": {
-    "NEXT_PUBLIC_API_URL": "@api-url",
-    "NEXT_PUBLIC_WS_URL": "@ws-url"
-  },
-  "regions": ["iad1"],
+  "regions": [
+    "iad1"
+  ],
   "github": {
     "enabled": true,
     "autoJobCancelation": true
+  },
+  "experimentalServices": {
+    "web": {
+      "entrypoint": "apps/web",
+      "routePrefix": "/",
+      "framework": "nextjs"
+    },
+    "ml": {
+      "entrypoint": "services/ml",
+      "routePrefix": "/_/ml"
+    }
   }
 }

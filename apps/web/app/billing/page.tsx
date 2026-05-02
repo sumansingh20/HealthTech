@@ -303,9 +303,9 @@ export default function BillingPage() {
         <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-medium text-amber-400">Demo Mode</p>
+            <p className="text-sm font-medium text-amber-400">Billing not connected</p>
             <p className="text-sm text-amber-200/70">
-              This is a demonstration billing interface. In production, integrate with Stripe, PayPal, or similar payment providers.
+              Connect a billing provider and API before enabling this section.
             </p>
           </div>
         </div>

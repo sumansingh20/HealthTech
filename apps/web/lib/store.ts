@@ -1,8 +1,23 @@
 'use client';
 
 import { create } from 'zustand';
-import { fallbackAnalytics, fallbackSnapshot, riskFromReading } from './demo-data';
+import { riskFromReading } from './clinical';
 import type { Alert, AnalyticsSummary, DashboardPatient, DashboardSnapshot, Prediction, VitalReading } from './types';
+
+const emptySnapshot: DashboardSnapshot = {
+  generatedAt: new Date().toISOString(),
+  patients: [],
+  capacity: { beds: 12, occupied: 0, critical: 0, warning: 0 },
+  alerts: []
+};
+
+const emptyAnalytics: AnalyticsSummary = {
+  generatedAt: new Date().toISOString(),
+  riskDistribution: { low: 0, medium: 0, critical: 0 },
+  averageVitals: { heartRate: 0, spo2: 0, systolic: 0, diastolic: 0, temperature: 0 },
+  alertBurndown: Array.from({ length: 12 }, (_, index) => ({ hour: `${String(index).padStart(2, '0')}:00`, warning: 0, critical: 0 })),
+  bedUtilization: []
+};
 
 interface IcuState {
   snapshot: DashboardSnapshot;
@@ -30,9 +45,9 @@ function patientStatus(reading?: VitalReading): DashboardPatient['status'] {
 }
 
 export const useIcuStore = create<IcuState>((set) => ({
-  snapshot: fallbackSnapshot,
-  analytics: fallbackAnalytics,
-  selectedPatientId: fallbackSnapshot.patients[0]?.id ?? '',
+  snapshot: emptySnapshot,
+  analytics: emptyAnalytics,
+  selectedPatientId: '',
   connected: false,
   emergencyMode: false,
   theme: 'dark',
@@ -83,7 +98,15 @@ export const useIcuStore = create<IcuState>((set) => ({
 }));
 
 export function connectVitalsSocket() {
-  const url = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:4003/ws';
+  const url = process.env.NEXT_PUBLIC_WS_URL;
+  if (!url) {
+    useIcuStore.getState().setConnected(false);
+    return {
+      close() {
+        useIcuStore.getState().setConnected(false);
+      }
+    } as Pick<WebSocket, 'close'>;
+  }
   const socket = new WebSocket(url);
   const store = useIcuStore.getState();
 

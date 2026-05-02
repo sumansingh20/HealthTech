@@ -1,19 +1,9 @@
-import { createId, createServer, demoUsers, healthResponse, sendJson, type AuditLog } from '@icu/shared';
+import { createId, createServer, healthResponse, sendJson, type AuditLog, getMongoDb } from '@icu/shared';
 
 const serviceName = 'audit-service';
 const port = Number(process.env.PORT ?? 4008);
 
-const logs: AuditLog[] = [
-  {
-    id: createId('log'),
-    actorId: demoUsers[0]!.id,
-    actorRole: 'doctor',
-    action: 'dashboard.opened',
-    resource: 'dashboard',
-    metadata: { origin: 'demo-seed' },
-    createdAt: new Date().toISOString()
-  }
-];
+let logsColl: any = null;
 
 const server = createServer([
   {
@@ -24,12 +14,15 @@ const server = createServer([
   {
     method: 'GET',
     pattern: /^\/logs$/,
-    handler: ({ res }) => sendJson(res, 200, { logs })
+    handler: async ({ res }) => {
+      const items = await logsColl.find({}).sort({ createdAt: -1 }).limit(200).toArray().catch(() => []);
+      sendJson(res, 200, { logs: items });
+    }
   },
   {
     method: 'POST',
     pattern: /^\/logs$/,
-    handler: ({ res, body }) => {
+    handler: async ({ res, body }) => {
       const incoming = body as Partial<AuditLog>;
       const log: AuditLog = {
         id: createId('log'),
@@ -42,12 +35,25 @@ const server = createServer([
         ...(incoming.ipAddress ? { ipAddress: incoming.ipAddress } : {}),
         ...(incoming.metadata ? { metadata: incoming.metadata } : {})
       };
-      logs.unshift(log);
+      await logsColl.insertOne(log);
       sendJson(res, 201, { log });
     }
   }
 ]);
 
-server.listen(port, () => {
-  console.log(`${serviceName} listening on :${port}`);
-});
+async function initAndListen() {
+  try {
+    const db = await getMongoDb();
+    logsColl = db.collection('logs');
+    await logsColl.createIndex({ actorId: 1, createdAt: -1 }).catch(() => {});
+
+    server.listen(port, () => {
+      console.log(`${serviceName} listening on :${port}`);
+    });
+  } catch (err) {
+    console.error('Failed to initialize database connection', err);
+    process.exit(1);
+  }
+}
+
+void initAndListen();

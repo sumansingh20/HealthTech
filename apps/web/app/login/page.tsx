@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Heart, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import { getApiBaseUrl } from '../../lib/api';
 
 interface LoginForm {
   email: string;
@@ -22,7 +23,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
@@ -47,16 +48,6 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const demoAccounts = [
-    { email: 'dr.carter@icu.local', password: 'StrongPass123!', role: 'Doctor' },
-    { email: 'nurse.lee@icu.local', password: 'StrongPass123!', role: 'Nurse' },
-    { email: 'admin@icu.local', password: 'StrongPass123!', role: 'Admin' }
-  ];
-
-  const fillDemo = (email: string, password: string) => {
-    setForm({ email, password });
   };
 
   return (
@@ -163,20 +154,8 @@ export default function LoginPage() {
             </form>
           </div>
 
-          {/* Demo Accounts */}
           <div className="border-t border-slate-800/50 p-6 bg-slate-800/20">
-            <p className="text-xs text-slate-500 mb-3">Demo accounts (click to fill)</p>
-            <div className="flex flex-wrap gap-2">
-              {demoAccounts.map((account) => (
-                <button
-                  key={account.email}
-                  onClick={() => fillDemo(account.email, account.password)}
-                  className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-slate-300 hover:text-white transition-all"
-                >
-                  {account.role}
-                </button>
-              ))}
-            </div>
+            <p className="text-xs text-slate-500">Use a registered account to sign in.</p>
           </div>
         </div>
 

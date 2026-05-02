@@ -8,9 +8,9 @@ const now = '2026-05-02T00:00:00.000Z';
 
 /**
  * MongoDB Atlas SRV Connection Configuration
- * 
+ *
  * To use MongoDB Atlas, set the following environment variables:
- * - MONGODB_URI: mongodb+srv://username:password@cluster-name.mongodb.net/database
+ * - MONGODB_URI: mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/
  * 
  * Example connection string:
  * mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/
@@ -59,7 +59,7 @@ export const databaseCollections = {
       { keys: { role: 1, active: 1 }, purpose: 'RBAC administration' }
     ],
     sampleDocument: {
-      id: 'user_demo_doctor',
+      id: 'user_sample_doctor',
       email: 'dr.carter@icu.local',
       name: 'Dr. Maya Carter',
       role: 'doctor',
@@ -77,14 +77,14 @@ export const databaseCollections = {
       { keys: { primaryDoctorId: 1, status: 1 }, purpose: 'care team worklist' }
     ],
     sampleDocument: {
-      id: 'patient_demo_1',
+      id: 'patient_sample_1',
       mrn: 'ICU-1001',
       name: 'Ava Thompson',
       age: 62,
       gender: 'female',
       bedId: 'B-01',
       status: 'watching',
-      primaryDoctorId: 'user_demo_doctor',
+      primaryDoctorId: 'user_sample_doctor',
       diagnosis: 'Post-operative cardiac observation',
       allergies: ['Penicillin'],
       admittedAt: now,
@@ -99,8 +99,8 @@ export const databaseCollections = {
       { keys: { lastSeenAt: -1 }, purpose: 'offline device detection' }
     ],
     sampleDocument: {
-      id: 'device_demo_1',
-      patientId: 'patient_demo_1',
+      id: 'device_sample_1',
+      patientId: 'patient_sample_1',
       serialNumber: 'MON-1001',
       type: 'monitor',
       status: 'online',
@@ -114,8 +114,8 @@ export const databaseCollections = {
       { keys: { timestamp: -1 }, ttlSeconds: 60 * 60 * 24 * 90, purpose: 'hot operational retention' }
     ],
     sampleDocument: {
-      patientId: 'patient_demo_1',
-      deviceId: 'device_demo_1',
+      patientId: 'patient_sample_1',
+      deviceId: 'device_sample_1',
       timestamp: now,
       heartRate: 104,
       spo2: 94,
@@ -131,8 +131,8 @@ export const databaseCollections = {
       { keys: { severity: 1, acknowledgedAt: 1, createdAt: -1 }, purpose: 'active emergency queue' }
     ],
     sampleDocument: {
-      id: 'alert_demo_1',
-      patientId: 'patient_demo_1',
+      id: 'alert_sample_1',
+      patientId: 'patient_sample_1',
       severity: 'warning',
       message: 'SpO2 below warning threshold',
       createdAt: now
@@ -145,8 +145,8 @@ export const databaseCollections = {
       { keys: { model: 1, timestamp: -1 }, purpose: 'model monitoring' }
     ],
     sampleDocument: {
-      id: 'prediction_demo_1',
-      patientId: 'patient_demo_1',
+      id: 'prediction_sample_1',
+      patientId: 'patient_sample_1',
       timestamp: now,
       riskLevel: 'medium',
       probability: 0.42,
@@ -162,12 +162,12 @@ export const databaseCollections = {
       { keys: { action: 1, resource: 1, createdAt: -1 }, purpose: 'compliance review' }
     ],
     sampleDocument: {
-      id: 'log_demo_1',
-      actorId: 'user_demo_doctor',
+      id: 'log_sample_1',
+      actorId: 'user_sample_doctor',
       actorRole: 'doctor',
       action: 'patient.read',
       resource: 'patient',
-      resourceId: 'patient_demo_1',
+      resourceId: 'patient_sample_1',
       createdAt: now
     }
   }

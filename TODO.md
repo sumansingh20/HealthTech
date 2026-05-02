@@ -90,7 +90,7 @@ packages/shared/     # Shared code
     types.ts        # TypeScript types
     security.ts     # JWT, hashing
     icu.ts           # Clinical scoring
-    demo.ts         # Demo data
+    demo.ts         # Seed data for tests only
 
 tests/               # Unit tests
   clinical.spec.ts  # Clinical logic
@@ -110,7 +110,7 @@ vercel.json          # Vercel deployment config
 
 ### MongoDB Atlas (Production)
 ```
-mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/icu
+mongodb+srv://sumantech:sumantech@cluster0.1enfs6w.mongodb.net/
 ```
 
 ### Local Development (Fallback)
